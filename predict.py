@@ -1,5 +1,7 @@
 import os
 from typing import Optional, List
+from io import BytesIO
+import base64
 
 import torch
 from torch import autocast
@@ -17,6 +19,18 @@ from image_to_image import (
 MODEL_CACHE = "diffusers-cache"
 
 
+def patch_conv(**patch):
+    cls = torch.nn.Conv2d
+    init = cls.__init__
+
+    def __init__(self, *args, **kwargs):
+        return init(self, *args, **kwargs, **patch)
+    cls.__init__ = __init__
+
+
+patch_conv(padding_mode='circular')
+
+
 class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
@@ -32,6 +46,7 @@ class Predictor(BasePredictor):
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         ).to("cuda")
+        self.pipe.safety_checker = lambda images, clip_input: (images, False)
 
     @torch.inference_mode()
     @torch.cuda.amp.autocast()
@@ -48,7 +63,7 @@ class Predictor(BasePredictor):
             choices=[128, 256, 512, 768, 1024],
             default=512,
         ),
-        init_image: Path = Input(
+        init_image: str = Input(
             description="Inital image to generate variations of. Will be resized to the specified width and height",
             default=None,
         ),
@@ -72,7 +87,7 @@ class Predictor(BasePredictor):
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
-    ) -> List[Path]:
+    ) -> dict:
         """Run a single prediction on the model"""
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
@@ -84,8 +99,10 @@ class Predictor(BasePredictor):
             )
 
         if init_image:
-            init_image = Image.open(init_image).convert("RGB")
-            init_image = preprocess_init_image(init_image, width, height).to("cuda")
+            init_image = Image.open(
+                BytesIO(base64.b64decode(init_image))).convert("RGB")
+            init_image = preprocess_init_image(
+                init_image, width, height).to("cuda")
 
             # use PNDM with init images
             scheduler = PNDMScheduler(
@@ -115,8 +132,8 @@ class Predictor(BasePredictor):
             generator=generator,
             num_inference_steps=num_inference_steps,
         )
-        if any(output["nsfw_content_detected"]):
-            raise Exception("NSFW content detected, please try a different prompt")
+        # if any(output["nsfw_content_detected"]):
+        #    raise Exception("NSFW content detected, please try a different prompt")
 
         output_paths = []
         for i, sample in enumerate(output["sample"]):
@@ -124,4 +141,4 @@ class Predictor(BasePredictor):
             sample.save(output_path)
             output_paths.append(Path(output_path))
 
-        return output_paths
+        return dict(seed=seed, data=output_paths)
