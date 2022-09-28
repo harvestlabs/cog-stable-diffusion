@@ -30,6 +30,23 @@ def patch_conv(**patch):
 patch_conv(padding_mode='circular')
 
 
+def add_salt_and_pepper(image, amount):
+    output = np.copy(np.array(image))
+
+    # add salt
+    nb_salt = np.ceil(amount * output.size * 0.5)
+    coords = [np.random.randint(0, i - 1, int(nb_salt)) for i in output.shape]
+    output[coords] = 1
+
+    # add pepper
+    nb_pepper = np.ceil(amount * output.size * 0.5)
+    coords = [np.random.randint(0, i - 1, int(nb_pepper))
+              for i in output.shape]
+    output[coords] = 0
+
+    return Image.fromarray(output)
+
+
 class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
@@ -112,9 +129,10 @@ class Predictor(BasePredictor):
         if init_image:
             init_image = Image.open(
                 BytesIO(base64.b64decode(init_image)))
-            if init_image.mode is "RGBA":
+            if init_image.mode == "RGBA":
                 # Convert this bg to white otherwise it will be black
                 background = Image.new("RGB", init_image.size, (255, 255, 255))
+                background = add_salt_and_pepper(background, 0.5)
                 background.paste(init_image, mask=init_image.split()[3])
                 init_image = background
 
