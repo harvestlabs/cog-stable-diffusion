@@ -136,19 +136,19 @@ class Predictor(BasePredictor):
             mask = preprocess_mask(mask, width, height).to("cuda")
 
         generator = torch.Generator("cuda").manual_seed(seed)
-        if init_image:
+        if init_image is not None and mask is not None:
+            print(f"Using inpainter")
             output = self.inpaint_pipe(
                 prompt=[prompt] * num_outputs if prompt is not None else None,
                 init_image=init_image,
-                mask=mask,
-                width=width,
-                height=height,
-                prompt_strength=prompt_strength,
+                mask_image=mask,
+                strength=prompt_strength,
                 guidance_scale=guidance_scale,
                 generator=generator,
                 num_inference_steps=num_inference_steps,
             )
         else:
+            print(f"Using normal diffuser")
             output = self.pipe(
                 prompt=[prompt] * num_outputs if prompt is not None else None,
                 init_image=init_image,
