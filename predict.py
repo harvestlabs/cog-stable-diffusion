@@ -9,13 +9,10 @@ from diffusers import PNDMScheduler, LMSDiscreteScheduler
 from PIL import Image
 from cog import BasePredictor, Input, Path
 
-from image_to_image import (
-    StableDiffusionImg2ImgPipeline,
-    preprocess_init_image,
-    preprocess_mask,
-)
 from diffusers.pipelines.stable_diffusion import (
+    preprocess,
     StableDiffusionInpaintPipeline,
+    StableDiffusionImg2ImgPipeline,
 )
 
 
@@ -41,7 +38,7 @@ class Predictor(BasePredictor):
         scheduler = PNDMScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
-        self.pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+        self.img2img = StableDiffusionImg2ImgPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             scheduler=scheduler,
             revision="fp16",
@@ -49,7 +46,8 @@ class Predictor(BasePredictor):
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         ).to("cuda")
-        self.pipe.safety_checker = lambda images, clip_input: (images, False)
+        self.img2img.safety_checker = lambda images, clip_input: (
+            images, False)
         # can we do this??
         self.inpaint_pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
@@ -115,8 +113,6 @@ class Predictor(BasePredictor):
         if init_image:
             init_image = Image.open(
                 BytesIO(base64.b64decode(init_image))).convert("RGB")
-            init_image = preprocess_init_image(
-                init_image, width, height).to("cuda")
 
             # use PNDM with init images
             scheduler = PNDMScheduler(
@@ -133,7 +129,6 @@ class Predictor(BasePredictor):
         if mask:
             mask = Image.open(
                 BytesIO(base64.b64decode(mask))).convert("RGB")
-            mask = preprocess_mask(mask, width, height).to("cuda")
 
         generator = torch.Generator("cuda").manual_seed(seed)
         if init_image is not None and mask is not None:
@@ -148,14 +143,11 @@ class Predictor(BasePredictor):
                 num_inference_steps=num_inference_steps,
             )
         else:
-            print(f"Using normal diffuser")
-            output = self.pipe(
+            print(f"Using img2img diffuser")
+            output = self.img2img(
                 prompt=[prompt] * num_outputs if prompt is not None else None,
                 init_image=init_image,
-                mask=mask,
-                width=width,
-                height=height,
-                prompt_strength=prompt_strength,
+                strength=prompt_strength,
                 guidance_scale=guidance_scale,
                 generator=generator,
                 num_inference_steps=num_inference_steps,
