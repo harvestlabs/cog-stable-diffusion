@@ -14,6 +14,9 @@ from image_to_image import (
     preprocess_init_image,
     preprocess_mask,
 )
+from pipeline_stable_diffusion_inpaint import (
+    StableDiffusionInpaintPipeline,
+)
 
 
 MODEL_CACHE = "diffusers-cache"
@@ -47,6 +50,17 @@ class Predictor(BasePredictor):
             local_files_only=True,
         ).to("cuda")
         self.pipe.safety_checker = lambda images, clip_input: (images, False)
+        # can we do this??
+        self.inpaint_pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            scheduler=scheduler,
+            revision="fp16",
+            torch_dtype=torch.float16,
+            cache_dir=MODEL_CACHE,
+            local_files_only=True,
+        ).to("cuda")
+        self.inpaint_pipe.safety_checker = lambda images, clip_input: (
+            images, False)
 
     @torch.inference_mode()
     @torch.cuda.amp.autocast()
@@ -67,7 +81,7 @@ class Predictor(BasePredictor):
             description="Inital image to generate variations of. Will be resized to the specified width and height",
             default=None,
         ),
-        mask: Path = Input(
+        mask: str = Input(
             description="Black and white image to use as mask for inpainting over init_image. Black pixels are inpainted and white pixels are preserved. Experimental feature, tends to work better with prompt strength of 0.5-0.7",
             default=None,
         ),
@@ -117,21 +131,35 @@ class Predictor(BasePredictor):
         self.pipe.scheduler = scheduler
 
         if mask:
-            mask = Image.open(mask).convert("RGB")
+            mask = Image.open(
+                BytesIO(base64.b64decode(mask))).convert("RGB")
             mask = preprocess_mask(mask, width, height).to("cuda")
 
         generator = torch.Generator("cuda").manual_seed(seed)
-        output = self.pipe(
-            prompt=[prompt] * num_outputs if prompt is not None else None,
-            init_image=init_image,
-            mask=mask,
-            width=width,
-            height=height,
-            prompt_strength=prompt_strength,
-            guidance_scale=guidance_scale,
-            generator=generator,
-            num_inference_steps=num_inference_steps,
-        )
+        if init_image:
+            output = self.inpaint_pipe(
+                prompt=[prompt] * num_outputs if prompt is not None else None,
+                init_image=init_image,
+                mask=mask,
+                width=width,
+                height=height,
+                prompt_strength=prompt_strength,
+                guidance_scale=guidance_scale,
+                generator=generator,
+                num_inference_steps=num_inference_steps,
+            )
+        else:
+            output = self.pipe(
+                prompt=[prompt] * num_outputs if prompt is not None else None,
+                init_image=init_image,
+                mask=mask,
+                width=width,
+                height=height,
+                prompt_strength=prompt_strength,
+                guidance_scale=guidance_scale,
+                generator=generator,
+                num_inference_steps=num_inference_steps,
+            )
         # if any(output["nsfw_content_detected"]):
         #    raise Exception("NSFW content detected, please try a different prompt")
 
