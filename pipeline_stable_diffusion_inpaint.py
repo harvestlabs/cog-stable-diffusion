@@ -9,8 +9,8 @@ import PIL
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from flax.core.frozen_dict import FrozenDict
 from diffusers import (
-    FrozenDict,
     AutoencoderKL,
     DDIMScheduler,
     DiffusionPipeline,

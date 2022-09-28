@@ -14,7 +14,7 @@ from image_to_image import (
     preprocess_init_image,
     preprocess_mask,
 )
-from pipeline_stable_diffusion_inpaint import (
+from diffusers.pipelines.stable_diffusion import (
     StableDiffusionInpaintPipeline,
 )
 
