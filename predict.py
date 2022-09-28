@@ -10,7 +10,6 @@ from PIL import Image
 from cog import BasePredictor, Input, Path
 
 from diffusers.pipelines.stable_diffusion import (
-    preprocess,
     StableDiffusionInpaintPipeline,
     StableDiffusionImg2ImgPipeline,
 )
@@ -124,8 +123,6 @@ class Predictor(BasePredictor):
                 beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
             )
 
-        self.pipe.scheduler = scheduler
-
         if mask:
             mask = Image.open(
                 BytesIO(base64.b64decode(mask))).convert("RGB")
@@ -133,6 +130,7 @@ class Predictor(BasePredictor):
         generator = torch.Generator("cuda").manual_seed(seed)
         if init_image is not None and mask is not None:
             print(f"Using inpainter")
+            self.inpaint_pipe.scheduler = scheduler
             output = self.inpaint_pipe(
                 prompt=[prompt] * num_outputs if prompt is not None else None,
                 init_image=init_image,
@@ -144,6 +142,7 @@ class Predictor(BasePredictor):
             )
         else:
             print(f"Using img2img diffuser")
+            self.img2img.scheduler = scheduler
             output = self.img2img(
                 prompt=[prompt] * num_outputs if prompt is not None else None,
                 init_image=init_image,
