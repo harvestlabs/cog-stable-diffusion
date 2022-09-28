@@ -9,16 +9,17 @@ import PIL
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
-
-
-logger = logging.get_logger(__name__)
+from diffusers import (
+    FrozenDict,
+    AutoencoderKL,
+    DDIMScheduler,
+    DiffusionPipeline,
+    PNDMScheduler,
+    LMSDiscreteScheduler,
+    UNet2DConditionModel,
+    StableDiffusionPipelineOutput,
+)
+from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 
 
 def preprocess_image(image):
@@ -85,8 +86,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        logger.info(
-            "`StableDiffusionInpaintPipeline` is experimental and will very likely change in the future.")
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             warnings.warn(
@@ -272,10 +271,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
             removed_text = self.tokenizer.batch_decode(
                 text_input_ids[:, self.tokenizer.model_max_length:])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-            )
             text_input_ids = text_input_ids[:,
                                             : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
