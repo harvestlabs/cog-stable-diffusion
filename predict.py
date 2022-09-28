@@ -3,6 +3,7 @@ from typing import Optional, List
 from io import BytesIO
 import base64
 
+import numpy as np
 import torch
 from torch import autocast
 from diffusers import PNDMScheduler, LMSDiscreteScheduler
@@ -10,6 +11,7 @@ from PIL import Image, ImageOps
 from cog import BasePredictor, Input, Path
 
 from diffusers.pipelines.stable_diffusion import (
+    StableDiffusionPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionImg2ImgPipeline,
 )
@@ -32,18 +34,15 @@ patch_conv(padding_mode='circular')
 
 def add_salt_and_pepper(image, amount):
     output = np.copy(np.array(image))
-
     # add salt
     nb_salt = np.ceil(amount * output.size * 0.5)
     coords = [np.random.randint(0, i - 1, int(nb_salt)) for i in output.shape]
     output[coords] = 1
-
     # add pepper
     nb_pepper = np.ceil(amount * output.size * 0.5)
     coords = [np.random.randint(0, i - 1, int(nb_pepper))
               for i in output.shape]
     output[coords] = 0
-
     return Image.fromarray(output)
 
 
@@ -74,6 +73,16 @@ class Predictor(BasePredictor):
             local_files_only=True,
         ).to("cuda")
         self.inpaint_pipe.safety_checker = lambda images, clip_input: (
+            images, False)
+        self.sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            scheduler=scheduler,
+            revision="fp16",
+            torch_dtype=torch.float16,
+            cache_dir=MODEL_CACHE,
+            local_files_only=True,
+        ).to("cuda")
+        self.sd_pipe.safety_checker = lambda images, clip_input: (
             images, False)
 
     @torch.inference_mode()
@@ -131,8 +140,8 @@ class Predictor(BasePredictor):
                 BytesIO(base64.b64decode(init_image)))
             if init_image.mode == "RGBA":
                 # Convert this bg to white otherwise it will be black
-                background = Image.new("RGB", init_image.size, (255, 255, 255))
-                background = add_salt_and_pepper(background, 0.5)
+                background = Image.new("RGB", init_image.size, (125, 125, 125))
+                # background = add_salt_and_pepper(background, 0.5)
                 background.paste(init_image, mask=init_image.split()[3])
                 init_image = background
 
@@ -165,16 +174,30 @@ class Predictor(BasePredictor):
                 num_inference_steps=num_inference_steps,
             )
         else:
-            print(f"Using img2img diffuser")
-            self.img2img.scheduler = scheduler
-            output = self.img2img(
-                prompt=[prompt] * num_outputs if prompt is not None else None,
-                init_image=init_image,
-                strength=prompt_strength,
-                guidance_scale=guidance_scale,
-                generator=generator,
-                num_inference_steps=num_inference_steps,
-            )
+            if init_image is not None:
+                print(f"Using img2img diffuser")
+                self.img2img.scheduler = scheduler
+                output = self.img2img(
+                    prompt=[prompt] *
+                    num_outputs if prompt is not None else None,
+                    init_image=init_image,
+                    strength=prompt_strength,
+                    guidance_scale=guidance_scale,
+                    generator=generator,
+                    num_inference_steps=num_inference_steps,
+                )
+            else:
+                print(f"Using SD diffuser")
+                self.sd_pipe.scheduler = scheduler
+                output = self.sd_pipe(
+                    prompt=[prompt] *
+                    num_outputs if prompt is not None else None,
+                    height=height,
+                    width=width,
+                    guidance_scale=guidance_scale,
+                    generator=generator,
+                    num_inference_steps=num_inference_steps,
+                )
         # if any(output["nsfw_content_detected"]):
         #    raise Exception("NSFW content detected, please try a different prompt")
 
