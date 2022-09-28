@@ -111,7 +111,12 @@ class Predictor(BasePredictor):
 
         if init_image:
             init_image = Image.open(
-                BytesIO(base64.b64decode(init_image))).convert("RGB")
+                BytesIO(base64.b64decode(init_image)))
+            if init_image.mode is "RGBA":
+                # Convert this bg to white otherwise it will be black
+                background = Image.new("RGB", init_image.size, (255, 255, 255))
+                background.paste(init_image, mask=init_image.split()[3])
+                init_image = background
 
             # use PNDM with init images
             scheduler = PNDMScheduler(
