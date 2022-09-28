@@ -6,7 +6,7 @@ import base64
 import torch
 from torch import autocast
 from diffusers import PNDMScheduler, LMSDiscreteScheduler
-from PIL import Image
+from PIL import Image, ImageOps
 from cog import BasePredictor, Input, Path
 
 from diffusers.pipelines.stable_diffusion import (
@@ -126,6 +126,7 @@ class Predictor(BasePredictor):
         if mask:
             mask = Image.open(
                 BytesIO(base64.b64decode(mask))).convert("RGB")
+            mask = ImageOps.invert(mask)
 
         generator = torch.Generator("cuda").manual_seed(seed)
         if init_image is not None and mask is not None:
