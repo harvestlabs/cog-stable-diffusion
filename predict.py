@@ -10,11 +10,7 @@ from diffusers import PNDMScheduler, LMSDiscreteScheduler
 from PIL import Image, ImageOps
 from cog import BasePredictor, Input, Path
 
-from diffusers.pipelines.stable_diffusion import (
-    StableDiffusionPipeline,
-    StableDiffusionInpaintPipeline,
-    StableDiffusionImg2ImgPipeline,
-)
+from .pipelines import StableDiffusionPipeline
 
 
 MODEL_CACHE = "diffusers-cache"
@@ -29,21 +25,7 @@ def patch_conv(**patch):
     cls.__init__ = __init__
 
 
-patch_conv(padding_mode='circular')
-
-
-def add_salt_and_pepper(image, amount):
-    output = np.copy(np.array(image))
-    # add salt
-    nb_salt = np.ceil(amount * output.size * 0.5)
-    coords = [np.random.randint(0, i - 1, int(nb_salt)) for i in output.shape]
-    output[coords] = 1
-    # add pepper
-    nb_pepper = np.ceil(amount * output.size * 0.5)
-    coords = [np.random.randint(0, i - 1, int(nb_pepper))
-              for i in output.shape]
-    output[coords] = 0
-    return Image.fromarray(output)
+# patch_conv(padding_mode='circular')
 
 
 class Predictor(BasePredictor):
@@ -53,7 +35,7 @@ class Predictor(BasePredictor):
         scheduler = PNDMScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
-        self.img2img = StableDiffusionImg2ImgPipeline.from_pretrained(
+        self.pipe = StableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             scheduler=scheduler,
             revision="fp16",
@@ -61,29 +43,7 @@ class Predictor(BasePredictor):
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         ).to("cuda")
-        self.img2img.safety_checker = lambda images, clip_input: (
-            images, False)
-        # can we do this??
-        self.inpaint_pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            scheduler=scheduler,
-            revision="fp16",
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
-        ).to("cuda")
-        self.inpaint_pipe.safety_checker = lambda images, clip_input: (
-            images, False)
-        self.sd_pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            scheduler=scheduler,
-            revision="fp16",
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
-        ).to("cuda")
-        self.sd_pipe.safety_checker = lambda images, clip_input: (
-            images, False)
+        self.pipe.disable_nsfw_filter()
 
     @torch.inference_mode()
     @torch.cuda.amp.autocast()
@@ -137,21 +97,10 @@ class Predictor(BasePredictor):
 
         if init_image:
             init_image = Image.open(
-                BytesIO(base64.b64decode(init_image)))
-            if init_image.mode == "RGBA":
-                # Convert this bg to white otherwise it will be black
-                background = Image.new("RGB", init_image.size, (125, 125, 125))
-                # background = add_salt_and_pepper(background, 0.5)
-                background.paste(init_image, mask=init_image.split()[3])
-                init_image = background
-
-            # use PNDM with init images
-            scheduler = PNDMScheduler(
-                beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
-            )
+                BytesIO(base64.b64decode(init_image))).convert("RGB")
         else:
             # use LMS without init images
-            scheduler = LMSDiscreteScheduler(
+            self.pipe.scheduler = LMSDiscreteScheduler(
                 beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
             )
 
@@ -161,43 +110,17 @@ class Predictor(BasePredictor):
             mask = ImageOps.invert(mask)
 
         generator = torch.Generator("cuda").manual_seed(seed)
-        if init_image is not None and mask is not None:
-            print(f"Using inpainter")
-            self.inpaint_pipe.scheduler = scheduler
-            output = self.inpaint_pipe(
-                prompt=[prompt] * num_outputs if prompt is not None else None,
-                init_image=init_image,
-                mask_image=mask,
-                strength=prompt_strength,
-                guidance_scale=guidance_scale,
-                generator=generator,
-                num_inference_steps=num_inference_steps,
-            )
-        else:
-            if init_image is not None:
-                print(f"Using img2img diffuser")
-                self.img2img.scheduler = scheduler
-                output = self.img2img(
-                    prompt=[prompt] *
-                    num_outputs if prompt is not None else None,
-                    init_image=init_image,
-                    strength=prompt_strength,
-                    guidance_scale=guidance_scale,
-                    generator=generator,
-                    num_inference_steps=num_inference_steps,
-                )
-            else:
-                print(f"Using SD diffuser")
-                self.sd_pipe.scheduler = scheduler
-                output = self.sd_pipe(
-                    prompt=[prompt] *
-                    num_outputs if prompt is not None else None,
-                    height=height,
-                    width=width,
-                    guidance_scale=guidance_scale,
-                    generator=generator,
-                    num_inference_steps=num_inference_steps,
-                )
+        output = self.pipe(
+            prompt=[prompt] * num_outputs if prompt is not None else None,
+            height=height,
+            width=width,
+            init_image=init_image,
+            mask_image=mask,
+            strength=prompt_strength,
+            guidance_scale=guidance_scale,
+            generator=generator,
+            num_inference_steps=num_inference_steps,
+        )
         # if any(output["nsfw_content_detected"]):
         #    raise Exception("NSFW content detected, please try a different prompt")
 
