@@ -10,7 +10,7 @@ from diffusers import PNDMScheduler, LMSDiscreteScheduler
 from PIL import Image, ImageOps
 from cog import BasePredictor, Input, Path
 
-from .pipelines import StableDiffusionPipeline
+import pipelines
 
 
 MODEL_CACHE = "diffusers-cache"
@@ -35,7 +35,7 @@ class Predictor(BasePredictor):
         scheduler = PNDMScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
-        self.pipe = StableDiffusionPipeline.from_pretrained(
+        self.pipe = pipelines.StableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             scheduler=scheduler,
             revision="fp16",
@@ -50,6 +50,7 @@ class Predictor(BasePredictor):
     def predict(
         self,
         prompt: str = Input(description="Input prompt", default=""),
+        negative_prompt: str = Input(default=None),
         width: int = Input(
             description="Width of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
             choices=[128, 256, 512, 768, 1024],
@@ -112,6 +113,8 @@ class Predictor(BasePredictor):
         generator = torch.Generator("cuda").manual_seed(seed)
         output = self.pipe(
             prompt=[prompt] * num_outputs if prompt is not None else None,
+            negative_prompt=[negative_prompt] *
+            num_outputs if negative_prompt is not None else None,
             height=height,
             width=width,
             init_image=init_image,
