@@ -13,9 +13,6 @@ from cog import BasePredictor, Input, Path
 import pipelines
 
 
-MODEL_CACHE = "diffusers-cache"
-
-
 def patch_conv(**patch):
     cls = torch.nn.Conv2d
     init = cls.__init__
@@ -38,9 +35,6 @@ class Predictor(BasePredictor):
         self.pipe = pipelines.StableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             scheduler=scheduler,
-            revision="fp16",
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
             local_files_only=True,
         ).to("cuda")
         self.pipe.disable_nsfw_filter()
@@ -74,7 +68,7 @@ class Predictor(BasePredictor):
             default=0.8,
         ),
         num_outputs: int = Input(
-            description="Number of images to output", choices=[1, 2, 3, 4], default=1
+            description="Number of images to output", choices=[1, 2, 3, 4, 5, 10], default=1
         ),
         num_inference_steps: int = Input(
             description="Number of denoising steps", ge=1, le=500, default=50
@@ -112,9 +106,9 @@ class Predictor(BasePredictor):
 
         generator = torch.Generator("cuda").manual_seed(seed)
         output = self.pipe(
-            prompt=[prompt] * num_outputs if prompt is not None else None,
-            negative_prompt=[negative_prompt] *
-            num_outputs if negative_prompt is not None else None,
+            prompt=prompt if prompt is not None else None,
+            negative_prompt=negative_prompt if negative_prompt is not None else None,
+            num_images_per_prompt=num_outputs,
             height=height,
             width=width,
             init_image=init_image,

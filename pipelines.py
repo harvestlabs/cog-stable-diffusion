@@ -58,14 +58,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-        inpaint = StableDiffusionInpaintPipeline(
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            unet=unet,
-            scheduler=scheduler,
+        inpaint = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting",
+            revision="fp16",
+            torch_dtype=torch.float16,
             safety_checker=safety_checker,
-            feature_extractor=feature_extractor,
         )
 
         self.register_modules(
@@ -93,6 +90,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         init_image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         mask_image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         strength: float = 0.8,
@@ -110,6 +108,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if init_image is None:
             result = self.text2img(
                 prompt=prompt,
+                negative_prompt=negative_prompt,
                 height=height,
                 width=width,
                 num_inference_steps=num_inference_steps,
@@ -124,6 +123,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             if mask_image is None:
                 result = self.img2img(
                     prompt=prompt,
+                    negative_prompt=negative_prompt,
                     init_image=init_image,
                     strength=strength,
                     num_inference_steps=num_inference_steps,
@@ -136,6 +136,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             else:
                 result = self.inpaint(
                     prompt=prompt,
+                    negative_prompt=negative_prompt,
                     init_image=init_image,
                     mask_image=mask_image,
                     strength=strength,
