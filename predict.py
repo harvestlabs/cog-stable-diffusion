@@ -35,7 +35,6 @@ class Predictor(BasePredictor):
         self.pipe = pipelines.StableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             scheduler=scheduler,
-            local_files_only=True,
         ).to("cuda")
         self.pipe.disable_nsfw_filter()
 
