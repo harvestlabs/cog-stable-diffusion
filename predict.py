@@ -24,17 +24,12 @@ def patch_conv(**patch):
 
 # patch_conv(padding_mode='circular')
 
-
 class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
-        scheduler = PNDMScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
-        )
         self.pipe = pipelines.StableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
-            scheduler=scheduler,
         ).to("cuda")
         self.pipe.disable_nsfw_filter()
 
@@ -92,11 +87,11 @@ class Predictor(BasePredictor):
         if init_image:
             init_image = Image.open(
                 BytesIO(base64.b64decode(init_image))).convert("RGB")
-        else:
-            # use LMS without init images
-            self.pipe.scheduler = LMSDiscreteScheduler(
-                beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
-            )
+            if scheduler != "PNDM":
+                print("Using PNDM scheduler since an init image was provided")
+                scheduler = "PNDM"
+
+            self.pipe.scheduler = make_scheduler(scheduler)
 
         if mask:
             mask = Image.open(
@@ -127,3 +122,21 @@ class Predictor(BasePredictor):
             output_paths.append(Path(output_path))
 
         return dict(seed=seed, data=output_paths)
+
+
+def make_scheduler(name):
+    return {
+        "PNDM": PNDMScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
+        ),
+        "K-LMS": LMSDiscreteScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
+        ),
+        "DDIM": DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        ),
+    }[name]
