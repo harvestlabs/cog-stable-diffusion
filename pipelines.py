@@ -36,8 +36,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        scheduler = scheduler.set_format("pt")
-
         text2img = StableDiffusionText2ImgPipeline(
             vae=vae,
             text_encoder=text_encoder,
