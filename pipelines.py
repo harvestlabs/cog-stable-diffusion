@@ -58,9 +58,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         inpaint = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting",
-            revision="fp16",
-            torch_dtype=torch.float16,
             safety_checker=safety_checker,
+            local_files_only=True,
         )
 
         self.register_modules(

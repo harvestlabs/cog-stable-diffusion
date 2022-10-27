@@ -6,11 +6,14 @@ import base64
 import numpy as np
 import torch
 from torch import autocast
-from diffusers import PNDMScheduler, LMSDiscreteScheduler
+from diffusers import PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler
 from PIL import Image, ImageOps
 from cog import BasePredictor, Input, Path
 
 import pipelines
+
+
+torch.set_grad_enabled(False)
 
 
 def patch_conv(**patch):
@@ -112,11 +115,9 @@ class Predictor(BasePredictor):
             generator=generator,
             num_inference_steps=num_inference_steps,
         )
-        # if any(output["nsfw_content_detected"]):
-        #    raise Exception("NSFW content detected, please try a different prompt")
 
         output_paths = []
-        for i, sample in enumerate(output["sample"]):
+        for i, sample in enumerate(output.images):
             output_path = f"/tmp/out-{i}.png"
             sample.save(output_path)
             output_paths.append(Path(output_path))
