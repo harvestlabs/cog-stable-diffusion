@@ -9,7 +9,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
-    StableDiffusionInpaintPipeline,
+    StableDiffusionInpaintPipelineLegacy,
     StableDiffusionPipeline as StableDiffusionText2ImgPipeline,
     UNet2DConditionModel
 )
@@ -35,6 +35,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
+        vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema")
 
         text2img = StableDiffusionText2ImgPipeline(
             vae=vae,
@@ -56,10 +57,14 @@ class StableDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-        inpaint = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting",
+        inpaint = StableDiffusionInpaintPipelineLegacy(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
             safety_checker=safety_checker,
-            local_files_only=True,
+            feature_extractor=feature_extractor,
         )
 
         self.register_modules(

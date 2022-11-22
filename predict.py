@@ -1,12 +1,9 @@
 import os
-from typing import Optional, List
 from io import BytesIO
 import base64
 
-import numpy as np
 import torch
-from torch import autocast
-from diffusers import PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler
+from diffusers import PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler, DPMSolverMultistepScheduler
 from PIL import Image, ImageOps
 from cog import BasePredictor, Input, Path
 
@@ -31,10 +28,21 @@ class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
+        model_name = "podium2-bg_style"
         self.pipe = pipelines.StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
+            model_name,
         ).to("cuda")
         self.pipe.disable_nsfw_filter()
+        self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            model_name,
+            subfolder="scheduler",
+            solver_order=2,
+            predict_epsilon=True,
+            thresholding=False,
+            algorithm_type="dpmsolver++",
+            solver_type="midpoint",
+            denoise_final=True,
+        )
 
     @torch.inference_mode()
     @torch.cuda.amp.autocast()
@@ -76,6 +84,9 @@ class Predictor(BasePredictor):
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
+        output_type: str = Input(
+            description="Type of ponzu output requested", choices=["icon", "bg", "default"], default="default"
+        )
     ) -> dict:
         """Run a single prediction on the model"""
         if seed is None:
@@ -90,11 +101,10 @@ class Predictor(BasePredictor):
         if init_image:
             init_image = Image.open(
                 BytesIO(base64.b64decode(init_image))).convert("RGB")
-            if scheduler != "PNDM":
-                print("Using PNDM scheduler since an init image was provided")
-                scheduler = "PNDM"
-
-            self.pipe.scheduler = make_scheduler(scheduler)
+            if output_type == "icon":
+                self.pipe.scheduler = PNDMScheduler(
+                    beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
+                )
 
         if mask:
             mask = Image.open(
@@ -122,22 +132,5 @@ class Predictor(BasePredictor):
             sample.save(output_path)
             output_paths.append(Path(output_path))
 
+        torch.cuda.empty_cache()
         return dict(seed=seed, data=output_paths)
-
-
-def make_scheduler(name):
-    return {
-        "PNDM": PNDMScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
-        ),
-        "K-LMS": LMSDiscreteScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
-        ),
-        "DDIM": DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-        ),
-    }[name]
