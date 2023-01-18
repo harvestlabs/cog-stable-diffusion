@@ -3,9 +3,10 @@ from io import BytesIO
 import base64
 
 import torch
-from diffusers import PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler, DPMSolverMultistepScheduler
+from diffusers import PNDMScheduler
 from PIL import Image, ImageOps
 from cog import BasePredictor, Input, Path
+import numpy as np
 
 import pipelines
 
@@ -28,21 +29,7 @@ class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
-        model_name = "podium2-bg_style"
-        self.pipe = pipelines.StableDiffusionPipeline.from_pretrained(
-            model_name,
-        ).to("cuda")
-        self.pipe.disable_nsfw_filter()
-        self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(
-            model_name,
-            subfolder="scheduler",
-            solver_order=2,
-            predict_epsilon=True,
-            thresholding=False,
-            algorithm_type="dpmsolver++",
-            solver_type="midpoint",
-            denoise_final=True,
-        )
+        self.pipe = pipelines.HarvestLabsPipelines()
 
     @torch.inference_mode()
     @torch.cuda.amp.autocast()
@@ -68,6 +55,10 @@ class Predictor(BasePredictor):
             description="Black and white image to use as mask for inpainting over init_image. Black pixels are inpainted and white pixels are preserved. Experimental feature, tends to work better with prompt strength of 0.5-0.7",
             default=None,
         ),
+        depth_image: str = Input(
+            description="Depth mask of the init_image",
+            default=None,
+        ),
         prompt_strength: float = Input(
             description="Prompt strength when using init image. 1.0 corresponds to full destruction of information in init image",
             default=0.8,
@@ -84,9 +75,6 @@ class Predictor(BasePredictor):
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
-        output_type: str = Input(
-            description="Type of ponzu output requested", choices=["icon", "bg", "default"], default="default"
-        )
     ) -> dict:
         """Run a single prediction on the model"""
         if seed is None:
@@ -101,11 +89,12 @@ class Predictor(BasePredictor):
         if init_image:
             init_image = Image.open(
                 BytesIO(base64.b64decode(init_image))).convert("RGB")
-            if output_type == "icon":
-                self.pipe.scheduler = PNDMScheduler(
-                    beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
-                )
 
+        if depth_image:
+            depth_image = Image.open(
+                BytesIO(base64.b64decode(depth_image))).convert("L")
+            depth_image = torch.from_numpy(np.expand_dims(
+                np.array(depth_image), axis=0)).float()
         if mask:
             mask = Image.open(
                 BytesIO(base64.b64decode(mask))).convert("RGB")
@@ -119,7 +108,8 @@ class Predictor(BasePredictor):
             height=height,
             width=width,
             init_image=init_image,
-            mask_image=mask,
+            depth_image=depth_image,
+            # mask_image=mask,
             strength=prompt_strength,
             guidance_scale=guidance_scale,
             generator=generator,
