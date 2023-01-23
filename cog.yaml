@@ -3,7 +3,7 @@ build:
     cuda: "11.6.2"
     python_version: "3.10"
     python_packages:
-	- "git+https://github.com/harvestlabs/diffusers@135567f18edc0bf02d515d5c76cc736d1ebddad3"
+        - "git+https://github.com/harvestlabs/diffusers@8d326e61cfbe5d76e25deca6093ecb22967d634e"
         - "einops==0.5.0"
         - "accelerate==0.13.2"
         - "torch==1.13.1"

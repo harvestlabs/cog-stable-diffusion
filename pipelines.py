@@ -7,9 +7,10 @@ from diffusers import (
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
     StableDiffusionDepth2ImgPipeline,
+    StableDiffusionInstructPix2PixPipeline
 )
 
-os.makedirs("cache", exist_ok=True)
+os.makedirs("diffusers-cache", exist_ok=True)
 
 
 class HarvestLabsPipelines:
@@ -20,7 +21,7 @@ class HarvestLabsPipelines:
 
         self.base = DiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base",
-            cache_dir="cache",
+            cache_dir="diffusers-cache",
             safety_checker=None,
             torch_dtype=torch.float16,
             revision="fp16"
@@ -31,10 +32,17 @@ class HarvestLabsPipelines:
 
         self.depth = StableDiffusionDepth2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-depth",
-            cache_dir="cache",
+            cache_dir="diffusers-cache",
             safety_checker=None,
             torch_dtype=torch.float16,
             revision="fp16"
+        ).to("cuda")
+        self.p2p = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+            "timbrooks/instruct-pix2pix",
+            cache_dir="diffusers-cache",
+            safety_checker=None,
+            torch_dtype=torch.float16,
+            revision="fp16",
         ).to("cuda")
 
     def __call__(
@@ -72,19 +80,30 @@ class HarvestLabsPipelines:
                 **kwargs,
             )
         else:
-            # depth
-            result = self.depth(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                image=init_image,
-                depth_map=depth_image,
-                strength=strength,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                eta=eta,
-                generator=generator,
-                output_type=output_type,
-                **kwargs,
-            )
+            if depth_image is not None:
+                # depth
+                result = self.depth(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    image=init_image,
+                    depth_map=depth_image,
+                    strength=strength,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    eta=eta,
+                    generator=generator,
+                    output_type=output_type,
+                    **kwargs,
+                )
+            else:
+                # pix2pix
+                result = self.p2p(
+                    prompt=prompt,
+                    image=init_image,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    image_guidance_scale=1,
+                    **kwargs,
+                )
 
         return result

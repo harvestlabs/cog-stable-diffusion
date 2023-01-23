@@ -4,15 +4,28 @@ import os
 import sys
 
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, StableDiffusionInstructPix2PixPipeline
 
 os.makedirs("diffusers-cache", exist_ok=True)
 
 
-pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
+StableDiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-base",
     cache_dir="diffusers-cache",
     revision="fp16",
     torch_dtype=torch.float16,
     use_auth_token=sys.argv[1],
 )
+StableDiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-depth",
+    cache_dir="diffusers-cache",
+    revision="fp16",
+    torch_dtype=torch.float16,
+    use_auth_token=sys.argv[1],
+)
+StableDiffusionInstructPix2PixPipeline.from_pretrained(
+    "timbrooks/instruct-pix2pix",
+    cache_dir="diffusers-cache",
+    torch_dtype=torch.float16,
+    revision="fp16",
+).to("cuda")
