@@ -75,6 +75,9 @@ class Predictor(BasePredictor):
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
+        perspective: str = Input(
+            description="Random seed. Leave blank to randomize the seed", default="platform", choices=["platform", "flatlay"]
+        ),
     ) -> dict:
         """Run a single prediction on the model"""
         if seed is None:
@@ -97,8 +100,7 @@ class Predictor(BasePredictor):
                 np.array(depth_image), axis=0)).float()
         if mask:
             mask = Image.open(
-                BytesIO(base64.b64decode(mask))).convert("RGB")
-            mask = ImageOps.invert(mask)
+                BytesIO(base64.b64decode(mask))).convert("L")
 
         generator = torch.Generator("cuda").manual_seed(seed)
         output = self.pipe(
@@ -109,11 +111,12 @@ class Predictor(BasePredictor):
             width=width,
             init_image=init_image,
             depth_image=depth_image,
-            # mask_image=mask,
+            mask_image=mask,
             strength=prompt_strength,
             guidance_scale=guidance_scale,
             generator=generator,
             num_inference_steps=num_inference_steps,
+            perspective=perspective,
         )
 
         output_paths = []

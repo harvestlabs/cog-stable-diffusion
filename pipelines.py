@@ -7,6 +7,7 @@ from diffusers import (
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
     StableDiffusionDepth2ImgPipeline,
+    StableDiffusionInpaintPipeline,
     StableDiffusionInstructPix2PixPipeline
 )
 
@@ -30,7 +31,22 @@ class HarvestLabsPipelines:
             self.base.scheduler.config)
         self.base = self.base.to("cuda")
 
+        self.img2img = StableDiffusionInpaintPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-inpainting",
+            cache_dir="diffusers-cache",
+            safety_checker=None,
+            torch_dtype=torch.float16,
+            revision="fp16"
+        ).to("cuda")
+
         self.depth = StableDiffusionDepth2ImgPipeline.from_pretrained(
+            "new_style",
+            # cache_dir="diffusers-cache",
+            safety_checker=None,
+            torch_dtype=torch.float16,
+            revision="fp16"
+        ).to("cuda")
+        self.flatlay = StableDiffusionDepth2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-depth",
             cache_dir="diffusers-cache",
             safety_checker=None,
@@ -53,6 +69,8 @@ class HarvestLabsPipelines:
         depth_image: Optional[Union[torch.FloatTensor,
                                     PIL.Image.Image]] = None,
         strength: float = 0.8,
+        mask_image: Optional[Union[torch.FloatTensor,
+                                   PIL.Image.Image]] = None,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         num_inference_steps: Optional[int] = 50,
@@ -61,6 +79,7 @@ class HarvestLabsPipelines:
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
+        perspective: Optional[str] = "platform",
         **kwargs,
     ):
 
@@ -82,20 +101,35 @@ class HarvestLabsPipelines:
         else:
             if depth_image is not None:
                 # depth
-                result = self.depth(
-                    prompt=prompt,
-                    negative_prompt=negative_prompt,
-                    image=init_image,
-                    depth_map=depth_image,
-                    strength=strength,
-                    num_inference_steps=num_inference_steps,
-                    guidance_scale=guidance_scale,
-                    eta=eta,
-                    generator=generator,
-                    output_type=output_type,
-                    **kwargs,
-                )
-            else:
+                if perspective == "platform":
+                    result = self.depth(
+                        prompt=prompt,
+                        negative_prompt=negative_prompt,
+                        image=init_image,
+                        depth_map=depth_image,
+                        strength=strength,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                        eta=eta,
+                        generator=generator,
+                        output_type=output_type,
+                        **kwargs,
+                    )
+                else:
+                    result = self.flatlay(
+                        prompt=prompt,
+                        negative_prompt=negative_prompt,
+                        image=init_image,
+                        depth_map=depth_image,
+                        strength=strength,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                        eta=eta,
+                        generator=generator,
+                        output_type=output_type,
+                        **kwargs,
+                    )
+            elif guidance_scale < 7:
                 # pix2pix
                 result = self.p2p(
                     prompt=prompt,
@@ -105,5 +139,20 @@ class HarvestLabsPipelines:
                     image_guidance_scale=1,
                     **kwargs,
                 )
-
+            else:
+                # img2img
+                result = self.img2img(
+                    prompt=prompt,
+                    height=height,
+                    width=width,
+                    negative_prompt=negative_prompt,
+                    image=init_image,
+                    mask_image=mask_image,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    eta=eta,
+                    generator=generator,
+                    output_type=output_type,
+                    **kwargs,
+                )
         return result

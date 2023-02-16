@@ -17,6 +17,13 @@ StableDiffusionPipeline.from_pretrained(
     use_auth_token=sys.argv[1],
 )
 StableDiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-inpainting",
+    cache_dir="diffusers-cache",
+    revision="fp16",
+    torch_dtype=torch.float16,
+    use_auth_token=sys.argv[1],
+)
+StableDiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
     cache_dir="diffusers-cache",
     revision="fp16",
