@@ -4,35 +4,25 @@ import os
 import sys
 
 import torch
-from diffusers import StableDiffusionPipeline, StableDiffusionInstructPix2PixPipeline
+from diffusers import StableDiffusionPipeline, ControlNetModel, StableDiffusionUpscalePipeline
 
 os.makedirs("diffusers-cache", exist_ok=True)
 
-
 StableDiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-base",
+    "darkstorm2150/Protogen_x3.4_Official_Release",
     cache_dir="diffusers-cache",
-    revision="fp16",
     torch_dtype=torch.float16,
-    use_auth_token=sys.argv[1],
+    use_auth_token=sys.argv[1]
 )
-StableDiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-inpainting",
-    cache_dir="diffusers-cache",
-    revision="fp16",
-    torch_dtype=torch.float16,
-    use_auth_token=sys.argv[1],
+ControlNetModel.from_pretrained("thibaud/controlnet-sd21-depth-diffusers",
+                                cache_dir="diffusers-cache", torch_dtype=torch.float16, use_auth_token=sys.argv[1])
+ControlNetModel.from_pretrained("thibaud/controlnet-sd21-scribble-diffusers",
+                                cache_dir="diffusers-cache", torch_dtype=torch.float16, use_auth_token=sys.argv[1])
+ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth",
+                                cache_dir="diffusers-cache", torch_dtype=torch.float16, use_auth_token=sys.argv[1])
+ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-scribble",
+                                cache_dir="diffusers-cache", torch_dtype=torch.float16, use_auth_token=sys.argv[1])
+StableDiffusionUpscalePipeline.from_pretrained(
+    "stabilityai/stable-diffusion-x4-upscaler",
+    cache_dir="diffusers-cache", revision="fp16", torch_dtype=torch.float16, use_auth_token=sys.argv[1]
 )
-StableDiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-depth",
-    cache_dir="diffusers-cache",
-    revision="fp16",
-    torch_dtype=torch.float16,
-    use_auth_token=sys.argv[1],
-)
-StableDiffusionInstructPix2PixPipeline.from_pretrained(
-    "timbrooks/instruct-pix2pix",
-    cache_dir="diffusers-cache",
-    torch_dtype=torch.float16,
-    revision="fp16",
-).to("cuda")

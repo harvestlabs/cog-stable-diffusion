@@ -1,8 +1,10 @@
+from typing import List, Optional
 import os
 from io import BytesIO
 import base64
 
 import torch
+import controlnet_hinter
 from diffusers import PNDMScheduler
 from PIL import Image, ImageOps
 from cog import BasePredictor, Input, Path
@@ -13,17 +15,6 @@ import pipelines
 
 torch.set_grad_enabled(False)
 
-
-def patch_conv(**patch):
-    cls = torch.nn.Conv2d
-    init = cls.__init__
-
-    def __init__(self, *args, **kwargs):
-        return init(self, *args, **kwargs, **patch)
-    cls.__init__ = __init__
-
-
-# patch_conv(padding_mode='circular')
 
 class Predictor(BasePredictor):
     def setup(self):
@@ -59,6 +50,10 @@ class Predictor(BasePredictor):
             description="Depth mask of the init_image",
             default=None,
         ),
+        canny_image: str = Input(
+            description="Normal of the init_image",
+            default=None,
+        ),
         prompt_strength: float = Input(
             description="Prompt strength when using init image. 1.0 corresponds to full destruction of information in init image",
             default=0.8,
@@ -75,9 +70,9 @@ class Predictor(BasePredictor):
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
-        perspective: str = Input(
-            description="Random seed. Leave blank to randomize the seed", default="platform", choices=["platform", "flatlay"]
-        ),
+        model: str = Input(default="base", choices=[
+                           "base", "depth", "upscale", "skybox"]),
+        control_conditioning: str = Input(default=None),
     ) -> dict:
         """Run a single prediction on the model"""
         if seed is None:
@@ -95,14 +90,20 @@ class Predictor(BasePredictor):
 
         if depth_image:
             depth_image = Image.open(
-                BytesIO(base64.b64decode(depth_image))).convert("L")
-            depth_image = torch.from_numpy(np.expand_dims(
-                np.array(depth_image), axis=0)).float()
+                BytesIO(base64.b64decode(depth_image))).convert("RGB")
+        if canny_image:
+            canny_image = Image.open(
+                BytesIO(base64.b64decode(canny_image))).convert("RGB")
+            canny_image = controlnet_hinter.hint_fake_scribble(canny_image)
         if mask:
             mask = Image.open(
                 BytesIO(base64.b64decode(mask))).convert("L")
+        if control_conditioning:
+            control_conditioning = [float(i)
+                                    for i in control_conditioning.split(",")]
 
         generator = torch.Generator("cuda").manual_seed(seed)
+
         output = self.pipe(
             prompt=prompt if prompt is not None else None,
             negative_prompt=negative_prompt if negative_prompt is not None else None,
@@ -111,12 +112,15 @@ class Predictor(BasePredictor):
             width=width,
             init_image=init_image,
             depth_image=depth_image,
+            canny_image=canny_image,
             mask_image=mask,
             strength=prompt_strength,
             guidance_scale=guidance_scale,
             generator=generator,
             num_inference_steps=num_inference_steps,
-            perspective=perspective,
+            model=model,
+            conditioning=control_conditioning[0] if control_conditioning else None,
+            conditioning2=control_conditioning[1] if control_conditioning else None,
         )
 
         output_paths = []
